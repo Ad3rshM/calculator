@@ -1,0 +1,376 @@
+#include <iostream>
+#include <stdexcept>
+#include <numbers>
+#include <cmath>
+#include "evaluator.h"
+#include "ast.h"
+#include "utility.h"
+
+void handleError(bool condition, std::string_view error_message){
+    if (condition){
+        throw std::runtime_error(std::string(error_message));
+    }
+}
+
+long double Evaluator::evaluate(const Node* node) {
+    if (auto number = dynamic_cast<const NumberNode*>(node)){
+        return number->value;
+    }
+    if (auto identifier = dynamic_cast<const IdentifierNode*>(node)){
+        if (variables.contains(identifier -> name)){
+            return variables[identifier -> name];
+        }
+        throw std::runtime_error("All variables must have been previously defined.");
+    }
+
+    if (auto user = dynamic_cast<const UserFunction*>(node)){
+        UserDefinedFunc function(user->parameters, user->ast->clone());
+
+        functions.insert_or_assign(user->name, std::move(function));
+
+        return 0;
+    }
+
+    if (auto function = dynamic_cast<const FunctionNode*>(node)){
+        std::vector<long double> values {};
+        for (const std::unique_ptr<Node>& arg : function->arguments){
+            values.push_back(evaluate(arg.get()));
+        }
+
+        const auto& it1 = functions.find(function->name);
+
+        if (it1 != functions.end()){
+            std::unordered_map<std::string, long double> oldValues {};
+            auto& uf = it1->second;
+            auto& param = uf.parameters;
+            if (param.size() != values.size()){
+                throw std::runtime_error("Incorrect number of parameters.");
+            }
+            for (size_t i = 0; i<param.size(); i++){
+                const auto& name = uf.parameters[i];
+                if (variables.contains(name)){
+                    oldValues[name] = variables[name];
+                }
+
+                variables[name] = values[i];
+            }
+
+            try{
+                long double f_input = evaluate(uf.ast.get());
+
+                for (const auto& name : uf.parameters){
+                    if (!oldValues.contains(name)){
+                        variables.erase(name);
+                    }
+                }
+
+                return f_input;
+            }
+            catch(...){
+                for (const auto& name : uf.parameters){
+                    if (!oldValues.contains(name)){
+                        variables.erase(name);
+                    }
+                }
+                throw std::runtime_error("Invalid function definition.");
+            }
+        }
+
+        auto it = builtins.find(function->name);
+        if (it == builtins.end()){
+            throw std::runtime_error("Invalid function.");
+        }
+
+        return it -> second(values);
+    }
+
+    if (auto unary = dynamic_cast<const UnaryNode*>(node)){
+        long double val = evaluate(unary -> middle.get());
+        
+        switch(unary->op){
+            case CharType::UnaryMinus:
+                return -val;
+            
+            case CharType::UnaryPlus:
+                return val;
+
+            default:
+                throw std::runtime_error("Unknown operator.");
+        }
+    }
+
+    if (auto assignment = dynamic_cast<const AssignmentNode*>(node)){
+        auto left = dynamic_cast<const IdentifierNode*>(assignment -> left.get());
+        if (!left){
+            throw std::runtime_error("Left of equals sign must be variable.");
+        }
+        long double value = evaluate(assignment -> right.get());
+        variables[left->name] = value;
+        return value;
+    }
+
+    if (auto binary = dynamic_cast<const BinaryNode*>(node)){
+        long double left = evaluate(binary->left.get());
+        long double right = evaluate(binary->right.get());
+
+        switch(binary->op){
+            case CharType::Add:
+                return left + right;
+            case CharType::Subtract:
+                return left - right;
+            case CharType::Multiply:
+                return left * right;
+            case CharType::Divide:
+                if (right != 0){
+                    return left/right;
+                }
+                throw(std::runtime_error("Division by 0 not allowed."));
+            case CharType::Power:
+                return std::pow(left, right);
+            default:
+                throw std::runtime_error("Unknown operator.");
+        }
+    }
+    throw std::runtime_error("Unknown expression.");
+}
+
+long double Evaluator::evaluate_function(const FunctionNode* function) {
+    std::vector<long double> values {};
+    for (const std::unique_ptr<Node>& arg : function->arguments) {
+        values.push_back(evaluate(arg.get()));
+    }
+
+    const auto& userDef {functions.find(function->name)};
+
+    if (userDef != functions.end()) {
+        std::unordered_map<std::string, long double> oldValues {};
+        UserDefinedFunc& userFunc {userDef->second};
+        std::vector<std::string> parameters {userFunc.parameters};
+
+        if (parameters.size() > values.size()) {
+            throw std::runtime_error("Too many parameters in user defined function.");
+        }
+        if (parameters.size() < values.size()) {
+            throw std::runtime_error("Not enough parameters in user defined function.");
+        }
+
+        for (size_t i = 0; i < parameters.size(); i++) {
+            std::string parameter = parameters[i];
+            if (variables.contains(parameter)) {
+                oldValues[parameter] = variables.at(parameter);
+            }
+
+            variables[parameter] = values[i];
+        }
+
+        long double body = evaluate(userFunc.ast.get());
+
+        for (std::string i : parameters) {
+            if (oldValues.contains(i)) {
+                variables[i] = oldValues[i];
+            }
+            else {
+                variables.erase(i);
+            }
+        }
+
+        return body;
+    }
+
+    const auto& builtinDef {builtins.find(function->name)};
+
+    return 0;
+}
+
+Evaluator::Evaluator() {
+    variables["pi"] = std::numbers::pi_v<long double>;
+    variables["e"] = std::numbers::e_v<long double>;
+
+    builtins["sin"] = [] (const auto& args) -> long double {
+        handleError((args.size() != 1), "sin() expects one argument.");
+
+        return std::sin(args[0]);
+    };
+
+    builtins["cos"] = [] (const auto& args) -> long double {
+        handleError((args.size() != 1), "cos() expects one argument.");
+
+        return std::cos(args[0]);
+    };
+
+    builtins["tan"] = [] (const auto& args) -> long double {
+        handleError((args.size() != 1), "tan() expects one argument.");
+
+        handleError((std::cos(args[0]) == 0), "tan() domain error.");
+
+        return std::tan(args[0]);
+    };
+
+    builtins["csc"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "csc() expects one argument.");
+
+        handleError(std::sin(args[0]) == 0, "csc() domain error.");
+
+        return (1 / std::sin(args[0]));
+    };
+
+    builtins["sec"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "sec() expects one argument.");
+
+        handleError(std::cos(args[0]) == 0, "sec() domain error.");
+
+        return (1 / std::cos(args[0]));
+    };
+
+    builtins["cot"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "cot() expects one argument.");
+
+        handleError(std::sin(args[0]) == 0, "cot() domain error.");
+
+        return (std::cos(args[0]) / std::sin(args[0]));
+    };
+
+    builtins["asin"] = [] (const auto& args) -> long double {
+        handleError((args.size() != 1), "asin() expects one argument.");
+
+        handleError((args[0] < -1) || (args[0] > 1), "asin() domain error.");
+
+        return std::asin(args[0]);
+    };
+
+    builtins["acos"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "acos() expects one argument.");
+
+        handleError(args[0] < -1 || args[0] > 1, "acos() domain error.");
+
+        return std::acos(args[0]);
+    };
+
+    builtins["atan"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "atan() expects one argument.");
+        
+        return std::atan(args[0]);
+    };
+
+    builtins["atan2"] = [] (const auto& args) -> long double {
+        handleError((args.size() != 2), "atan2() expects two arguments.");
+
+        handleError(args[0] == 0 && args[1] == 0, "atan2() domain error.");
+
+        return std::atan2(args[0], args[1]);
+    };
+
+    builtins["sinh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "sinh() expects one argument.");
+
+        return std::sinh(args[0]);
+    };
+
+    builtins["cosh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "cosh() expects one argument.");
+
+        return std::cosh(args[0]);
+    };
+
+    builtins["tanh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "tanh() expects one argument.");
+
+        return std::tanh(args[0]);
+    };
+
+    builtins["asinh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "asinh() expects one argument.");
+
+        return std::asinh(args[0]);
+    };
+
+    builtins["acosh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "acosh() expects one argument.");
+
+        handleError(args[0] < 1, "acosh() domain error.");
+
+        return std::acosh(args[0]);
+    };
+
+    builtins["atanh"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "atanh() expects one argument.");
+
+        handleError(args[0] <= -1 || args[0] >= 1, "atanh() domain error.");
+
+        return std::atanh(args[0]);
+    };
+
+    builtins["sqrt"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "sqrt() expects one argument.");
+
+        handleError(args[0] < 0, "sqrt() domain error.");
+
+        return std::sqrt(args[0]);
+    };
+
+    builtins["cbrt"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "cbrt() expects one argument.");
+
+        return std::cbrt(args[0]);
+    };
+
+    builtins["abs"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "abs() expects one argument.");
+
+        return std::abs(args[0]);
+    };
+
+    builtins["exp"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "abs() expects one argument.");
+
+        return std::exp(args[0]);
+    };
+
+    builtins["ln"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "ln() expects one argument.");
+        handleError(args[0] <= 0, "ln() domain error.");
+
+        return std::log(args[0]);
+    };
+
+    builtins["log"] = [] (const auto& args) -> long double {
+        if (args.size() == 1){
+            handleError(args[0] <= 0, "log() domain error.");
+
+            return std::log10(args[0]);
+        }
+
+        if (args.size() == 2){
+            long double base {args[0]};
+            long double x {args[1]};
+
+            handleError(base <= 0 || base == 1, "Invalid logarithm base.");
+
+            handleError(x <= 0, "log() domain error.");
+
+            return std::log(x) / std::log(base);
+        }
+
+        throw std::runtime_error("log() expects one or two arguments.");
+    };
+
+    builtins["log10"] = builtins["log"];
+
+    builtins["log2"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 1, "log2() expects one argument.");
+
+        handleError(args[0] <= 0, "log2() domain error.");
+
+        return std::log2(args[0]);
+    };
+
+    builtins["pow"] = [] (const auto& args) -> long double {
+        handleError(args.size() != 2, "pow() expects two arguments.");
+
+        handleError(args[0] < 0 && std::trunc(args[1]) != args[1], "pow() domain error.");
+
+        return std::pow(args[0], args[1]);
+    };
+
+    
+}
