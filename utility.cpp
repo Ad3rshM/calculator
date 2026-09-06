@@ -38,5 +38,5 @@ std::unique_ptr<Node> substitute (const Node* node, std::vector<std::unique_ptr<
         }
     }
 
-    throw std::runtime_error("Invalid token");
+    throw std::runtime_error("Invalid token.");
 }

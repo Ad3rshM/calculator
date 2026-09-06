@@ -32,56 +32,7 @@ long double Evaluator::evaluate(const Node* node) {
     }
 
     if (auto function = dynamic_cast<const FunctionNode*>(node)){
-        std::vector<long double> values {};
-        for (const std::unique_ptr<Node>& arg : function->arguments){
-            values.push_back(evaluate(arg.get()));
-        }
-
-        const auto& it1 = functions.find(function->name);
-
-        if (it1 != functions.end()){
-            std::unordered_map<std::string, long double> oldValues {};
-            auto& uf = it1->second;
-            auto& param = uf.parameters;
-            if (param.size() != values.size()){
-                throw std::runtime_error("Incorrect number of parameters.");
-            }
-            for (size_t i = 0; i<param.size(); i++){
-                const auto& name = uf.parameters[i];
-                if (variables.contains(name)){
-                    oldValues[name] = variables[name];
-                }
-
-                variables[name] = values[i];
-            }
-
-            try{
-                long double f_input = evaluate(uf.ast.get());
-
-                for (const auto& name : uf.parameters){
-                    if (!oldValues.contains(name)){
-                        variables.erase(name);
-                    }
-                }
-
-                return f_input;
-            }
-            catch(...){
-                for (const auto& name : uf.parameters){
-                    if (!oldValues.contains(name)){
-                        variables.erase(name);
-                    }
-                }
-                throw std::runtime_error("Invalid function definition.");
-            }
-        }
-
-        auto it = builtins.find(function->name);
-        if (it == builtins.end()){
-            throw std::runtime_error("Invalid function.");
-        }
-
-        return it -> second(values);
+        return evaluate_function(function);
     }
 
     if (auto unary = dynamic_cast<const UnaryNode*>(node)){
@@ -143,43 +94,39 @@ long double Evaluator::evaluate_function(const FunctionNode* function) {
     const auto& userDef {functions.find(function->name)};
 
     if (userDef != functions.end()) {
-        std::unordered_map<std::string, long double> oldValues {};
         UserDefinedFunc& userFunc {userDef->second};
-        std::vector<std::string> parameters {userFunc.parameters};
+        std::vector<std::unique_ptr<IdentifierNode>> old_vars {};
+        std::vector<std::unique_ptr<Node>> new_vars {};
 
-        if (parameters.size() > values.size()) {
+        for (std::string var : userFunc.parameters) {
+            old_vars.push_back(std::make_unique<IdentifierNode>(var));
+        }
+        for (long double value : values) {
+            new_vars.push_back(std::make_unique<NumberNode>(value));
+        }
+
+        if (old_vars.size() > new_vars.size()) {
             throw std::runtime_error("Too many parameters in user defined function.");
         }
-        if (parameters.size() < values.size()) {
+        if (old_vars.size() < new_vars.size()) {
             throw std::runtime_error("Not enough parameters in user defined function.");
         }
 
-        for (size_t i = 0; i < parameters.size(); i++) {
-            std::string parameter = parameters[i];
-            if (variables.contains(parameter)) {
-                oldValues[parameter] = variables.at(parameter);
-            }
+        std::unique_ptr<Node> substituted_ast = substitute(userFunc.ast.get(), old_vars, new_vars);
 
-            variables[parameter] = values[i];
-        }
-
-        long double body = evaluate(userFunc.ast.get());
-
-        for (std::string i : parameters) {
-            if (oldValues.contains(i)) {
-                variables[i] = oldValues[i];
-            }
-            else {
-                variables.erase(i);
-            }
-        }
+        long double body = evaluate(substituted_ast.get());
 
         return body;
     }
 
     const auto& builtinDef {builtins.find(function->name)};
 
-    return 0;
+    if (builtinDef != builtins.end()) {
+        auto builtinFunc = builtinDef->second;
+        return builtinFunc(values);
+    }
+
+    throw std::runtime_error("Not a function.");
 }
 
 Evaluator::Evaluator() {
