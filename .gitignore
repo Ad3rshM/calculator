@@ -4,5 +4,5 @@ __pycache__/
 .idea/
 .DS_Store
 *.exe
-*.out
-*.o
+*.out.
+calculator2
