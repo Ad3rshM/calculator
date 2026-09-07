@@ -40,7 +40,22 @@ int main(){
             if (parser.peek().type != CharType::End){
                 throw std::runtime_error("Unexpected token at end of expression.");
             }
-            result = evaluator.evaluate(tree.get());
+
+            if (auto function = dynamic_cast<const FunctionNode*>(tree.get())) {
+                if (function->name == "diff") {
+                    auto diff_result = evaluator.evaluate_differentiate(function);
+                    if (std::holds_alternative<long double>(diff_result)) {
+                        std::cout << "Result: " << std::get<long double>(diff_result) << '\n';
+                    }
+                    else {
+                        throw std::runtime_error("Cannot differentiate without point to evaluate at.");
+                    }
+                    
+                    continue;
+                }
+            }
+
+            long double result = evaluator.evaluate(tree.get());
             if (input.find('=') == std::string::npos){
                 evaluator.variables["result"] = result;
                 std::cout << "Result: " << result << '\n';

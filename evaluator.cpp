@@ -5,6 +5,7 @@
 #include "evaluator.h"
 #include "ast.h"
 #include "utility.h"
+#include "differentiator.h"
 
 void handleError(bool condition, std::string_view error_message){
     if (condition){
@@ -127,6 +128,55 @@ long double Evaluator::evaluate_function(const FunctionNode* function) {
     }
 
     throw std::runtime_error("Not a function.");
+}
+
+std::variant<long double, std::string> Evaluator::evaluate_differentiate(const FunctionNode* function) {
+    Differentiator differentiator;
+    const auto& args = function->arguments;
+    if (args.size() > 3) {
+        throw std::runtime_error("diff() accepts three arguments max.");
+    }
+    if (args.size() >= 1) {
+        const Node* expression = args[0].get();
+    }
+    
+    else {
+        throw std::runtime_error("diff() needs at least one argument.");
+    }
+
+    std::string diff_var {"x"};
+
+    if (args.size() >= 2) {
+        auto id = dynamic_cast<const IdentifierNode*>(args[1].get());
+        if (!id) {
+            throw std::runtime_error("Second argument to diff() must be variable.");
+        }
+        diff_var = id->name;
+    }
+
+    const Node* expression = args[0].get();
+
+    std::unique_ptr<Node> differentiated = differentiator.differentiate(expression, diff_var);
+
+    if (args.size() == 3) {
+        auto num = dynamic_cast<const NumberNode*>(args[2].get());
+        if (!num) {
+            throw std::runtime_error("Third argument to diff() must be number.");
+        }
+
+        auto var = std::make_unique<IdentifierNode>(diff_var);
+
+        std::vector<std::unique_ptr<Node>> new_vars {};
+        std::vector<std::unique_ptr<IdentifierNode>> old_vars {};
+
+        new_vars.push_back(std::make_unique<NumberNode>(num->value));
+        old_vars.push_back(std::move(var));
+        
+        std::unique_ptr<Node> substitute_diff = substitute(differentiated.get(), old_vars, new_vars);
+        return evaluate(substitute_diff.get());
+    }
+
+    throw std::runtime_error("Cannot print differentiated expressions yet.");
 }
 
 Evaluator::Evaluator() {
@@ -318,6 +368,4 @@ Evaluator::Evaluator() {
 
         return std::pow(args[0], args[1]);
     };
-
-    
 }
