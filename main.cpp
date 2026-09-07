@@ -48,7 +48,7 @@ int main(){
                         std::cout << "Result: " << std::get<long double>(diff_result) << '\n';
                     }
                     else {
-                        throw std::runtime_error("Cannot differentiate without point to evaluate at.");
+                        std::cout << "Result: " << std::get<std::string>(diff_result) << '\n';
                     }
                     
                     continue;

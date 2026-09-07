@@ -107,10 +107,10 @@ long double Evaluator::evaluate_function(const FunctionNode* function) {
         }
 
         if (old_vars.size() > new_vars.size()) {
-            throw std::runtime_error("Too many parameters in user defined function.");
+            throw std::runtime_error("Not enough parameters in user defined function.");
         }
         if (old_vars.size() < new_vars.size()) {
-            throw std::runtime_error("Not enough parameters in user defined function.");
+            throw std::runtime_error("Too many parameters in user defined function.");
         }
 
         std::unique_ptr<Node> substituted_ast = substitute(userFunc.ast.get(), old_vars, new_vars);
@@ -176,7 +176,8 @@ std::variant<long double, std::string> Evaluator::evaluate_differentiate(const F
         return evaluate(substitute_diff.get());
     }
 
-    throw std::runtime_error("Cannot print differentiated expressions yet.");
+    return pretty_print(differentiated.get());
+
 }
 
 Evaluator::Evaluator() {

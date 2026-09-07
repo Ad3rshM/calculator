@@ -42,3 +42,86 @@ std::unique_ptr<Node> substitute (const Node* node, std::vector<std::unique_ptr<
 
     throw std::runtime_error("Invalid token.");
 }
+
+std::string pretty_print (const Node* node) {
+    if (auto id = dynamic_cast<const IdentifierNode*>(node)) {
+        return id->name;
+    }
+
+    if (auto num = dynamic_cast<const NumberNode*>(node)) {
+        long double val = num->value;
+        return std::format("{}", val);
+    }
+
+    if (auto binary = dynamic_cast<const BinaryNode*>(node)) {
+        std::string left = pretty_print(binary->left.get());
+        std::string right = pretty_print(binary->right.get());
+        switch(binary->op) {
+            case CharType::Add:
+                return left + "+" + right;
+            case CharType::Multiply:
+                return "(" + left + ")" + "(" + right + ")";
+            case CharType::Divide:
+                return "(" + left + ")" + "/" + "(" + right + ")";
+            case CharType::Subtract:
+                return left + "-" + "(" + right + ")";
+            case CharType::Power:
+                return "(" + left + ")" + "^" + "(" + right + ")";
+            default:
+                throw std::runtime_error("Non-binary operation in binary node.");
+        }
+    }
+
+    if (auto unary = dynamic_cast<const UnaryNode*>(node)) {
+        std::string child = pretty_print(unary->middle.get());
+        switch(unary->op) {
+            case CharType::UnaryMinus:
+                return "-(" + child + ")";
+            case CharType::UnaryPlus:
+                return child;
+            default:
+                throw std::runtime_error("Non-unary operation in unary node.");
+        }
+    }
+
+    if (auto function = dynamic_cast<const FunctionNode*>(node)) {
+        std::vector<std::string> pretty_print_args {};
+        for (const std::unique_ptr<Node>& arg : function -> arguments) {
+            pretty_print_args.push_back(pretty_print(arg.get()));
+        }
+
+        std::string pretty_print_function = function->name + "(";
+
+        for (size_t i = 0; i < pretty_print_args.size(); i++) {
+            if (i != 0) {
+                pretty_print_function += ", ";
+            }
+            pretty_print_function += pretty_print_args[i];
+        }
+
+        pretty_print_function += ")";
+        return pretty_print_function;
+    }
+
+    if (auto user = dynamic_cast<const UserFunction*>(node)) {
+        std::string pretty_print_function = user->name + "(";
+
+        for (size_t i = 0; i < user->parameters.size(); i++) {
+            if (i != 0) {
+                pretty_print_function += ", ";
+            }
+            pretty_print_function += user->parameters[i];
+        }
+
+        pretty_print_function += ")";
+        return pretty_print_function;
+    }
+
+    if (auto assign = dynamic_cast<const AssignmentNode*>(node)) {
+        std::string left = pretty_print(assign->left.get());
+        std::string right = pretty_print(assign->right.get());
+        return left + "=" + right;
+    }
+
+    throw std::runtime_error("Not a node.");
+}
