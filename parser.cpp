@@ -29,18 +29,6 @@ bool Parser::match(CharType type){
 }
 
 std::unique_ptr<Node> Parser::parseOne() {
-    if (peek().type == CharType::UnaryMinus || peek().type == CharType::UnaryPlus){
-        CharType operation = advance().type;
-        auto number = parseOne();
-        try{
-            return std::make_unique<UnaryNode>(operation, std::move(number));
-        }
-        catch(...){
-            throw std::runtime_error("Error with Unary token.");
-        }
-        
-    }
-
     if (peek().type == CharType::Number){
         std::string name = advance().content;
         
@@ -104,19 +92,35 @@ std::unique_ptr<Node> Parser::parseOne() {
 std::unique_ptr<Node> Parser::parsePowers() {
     auto left = parseOne();
     if (match(CharType::Power)){
-        auto right = parsePowers();
+        auto right = parseUnary();
 
         return std::make_unique<BinaryNode>(CharType::Power, std::move(left), std::move(right));
     }
     return left;
 }
 
+std::unique_ptr<Node> Parser::parseUnary() {
+    if (peek().type == CharType::UnaryMinus || peek().type == CharType::UnaryPlus){
+        CharType operation = advance().type;
+        auto number = parseUnary();
+        try{
+            return std::make_unique<UnaryNode>(operation, std::move(number));
+        }
+        catch(...){
+            throw std::runtime_error("Error with Unary token.");
+        }
+        
+    }
+
+    return parsePowers();
+}
+
 std::unique_ptr<Node> Parser::parseMiddle() {
-        auto left = parsePowers();
+        auto left = parseUnary();
         
         while (peek().type == CharType::Multiply || peek().type == CharType::Divide){
             CharType operation = advance().type;
-            auto right = parsePowers();
+            auto right = parseUnary();
 
             left = std::make_unique<BinaryNode>(operation, std::move(left), std::move(right));
         }

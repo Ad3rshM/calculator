@@ -20,4 +20,5 @@ class Parser{
         std::unique_ptr<Node> parsePowers();
         std::unique_ptr<Node> parseMiddle();
         std::unique_ptr<Node> parseLow();
+        std::unique_ptr<Node> parseUnary();
 };

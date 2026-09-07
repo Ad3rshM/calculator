@@ -35,7 +35,9 @@ std::unique_ptr<Node> substitute (const Node* node, std::vector<std::unique_ptr<
         std::vector<std::unique_ptr<Node>> sub_args {};
         for (const std::unique_ptr<Node>& arg : function->arguments) {
             std::unique_ptr<Node> new_arg = substitute(arg.get(), old_vars, new_vars);
+            sub_args.push_back(std::move(new_arg));
         }
+        return std::make_unique<FunctionNode>(function->name, std::move(sub_args));
     }
 
     throw std::runtime_error("Invalid token.");
