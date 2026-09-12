@@ -16,8 +16,7 @@ class Evaluator{
         long double evaluate (const Node*);
         long double evaluate_function(const FunctionNode*);
         std::variant<long double, std::string> evaluate_differentiate (const FunctionNode*);
-        
-    private:
         std::unordered_map<std::string, std::function<long double(const std::vector<long double>&)>> builtins;
+    private:
         std::unordered_map<std::string, UserDefinedFunc> functions;
 };
